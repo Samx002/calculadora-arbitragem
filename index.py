@@ -1,11 +1,18 @@
 import streamlit as st
 import requests
 
-API_KEY = "809d93f325b63e147dd9c119d8cadbae"  # 🔑 Coloque sua API key aqui
-SPORT = "soccer_brazil_campeonato"  # Ex: Brasileirão
+API_KEY = "809d93f325b63e147dd9c119d8cadbae"
+SPORT = "soccer"
 REGION = "br"
-MARKET = "h2h"  # Mercado head-to-head (1X2)
-BOOKMAKERS = ["bet365", "pinnacle", "1xbet"]
+MARKET = "h2h"
+
+BOOKMAKERS = [
+    "bet365", "pinnacle", "1xbet", "williamhill", "unibet", "betfair", "bwin",
+    "ladbrokes", "marathonbet", "betsson", "leovegas", "888sport", "10bet",
+    "coolbet", "betvictor", "skybet", "coral", "draftkings", "fanduel", "foxbet",
+    "pointsbetus", "sugarhouse", "twinspires", "barstoolsportsbook", "bovada",
+    "caesars", "betrivers"
+]
 
 def buscar_odds():
     url = f"https://api.the-odds-api.com/v4/sports/{SPORT}/odds/"
@@ -30,9 +37,9 @@ def calcular_arbitragem_3vias(odd1, oddX, odd2):
 
 def calcular_apostas_3vias(odd1, oddX, odd2, investimento):
     inv_total = (1 / odd1) + (1 / oddX) + (1 / odd2)
-    aposta1 = (investimento / inv_total) / odd1
-    apostaX = (investimento / inv_total) / oddX
-    aposta2 = (investimento / inv_total) / odd2
+    aposta1 = investimento * (1 / odd1) / inv_total
+    apostaX = investimento * (1 / oddX) / inv_total
+    aposta2 = investimento * (1 / odd2) / inv_total
     retorno = round(investimento / inv_total, 2)
     return round(aposta1, 2), round(apostaX, 2), round(aposta2, 2), retorno
 
@@ -54,9 +61,8 @@ def main():
         odds_evento = {}
 
         for casa in evento["bookmakers"]:
-            mercados = casa["markets"]
-            for mercado in mercados:
-                for outcome in mercado["outcomes"]:
+            for mercado in casa.get("markets", []):
+                for outcome in mercado.get("outcomes", []):
                     nome = outcome["name"]
                     if nome not in odds_evento or outcome["price"] > odds_evento[nome]["odd"]:
                         odds_evento[nome] = {
