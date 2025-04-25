@@ -2,9 +2,9 @@ import streamlit as st
 import requests
 
 API_KEY = "809d93f325b63e147dd9c119d8cadbae"  # 🔑 Coloque sua API key aqui
-SPORT = "soccer_brazil_campeonato"              # Outros possíveis: mma, boxing...
+SPORT = "soccer_brazil_campeonato"  # Ex: Brasileirão
 REGION = "br"
-MARKET = "h2h"
+MARKET = "h2h"  # Mercado head-to-head (1X2)
 BOOKMAKERS = ["bet365", "pinnacle", "1xbet"]
 
 def buscar_odds():
@@ -21,22 +21,24 @@ def buscar_odds():
         return []
     return response.json()
 
-def calcular_arbitragem(odd1, odd2):
-    inv_total = (1 / odd1) + (1 / odd2)
+def calcular_arbitragem_3vias(odd1, oddX, odd2):
+    inv_total = (1 / odd1) + (1 / oddX) + (1 / odd2)
     if inv_total < 1:
         lucro = (1 - inv_total) * 100
         return True, lucro
     return False, 0
 
-def calcular_apostas(odd1, odd2, investimento):
-    aposta1 = investimento / (1 + (odd1 / odd2))
-    aposta2 = investimento - aposta1
-    retorno = round(aposta1 * odd1, 2)
-    return round(aposta1, 2), round(aposta2, 2), retorno
+def calcular_apostas_3vias(odd1, oddX, odd2, investimento):
+    inv_total = (1 / odd1) + (1 / oddX) + (1 / odd2)
+    aposta1 = (investimento / inv_total) / odd1
+    apostaX = (investimento / inv_total) / oddX
+    aposta2 = (investimento / inv_total) / odd2
+    retorno = round(investimento / inv_total, 2)
+    return round(aposta1, 2), round(apostaX, 2), round(aposta2, 2), retorno
 
 def main():
     st.set_page_config(page_title="Calculadora de Arbitragem", layout="wide")
-    st.title("🎯 Calculadora de Arbitragem entre Casas de Apostas")
+    st.title("🎯 Calculadora de Arbitragem 3-Vias (Futebol)")
     investimento = st.number_input("💰 Valor total a investir (R$)", value=100.0, step=10.0)
 
     with st.spinner("Buscando odds..."):
@@ -49,32 +51,37 @@ def main():
     encontrados = 0
 
     for evento in eventos:
-        odds_encontradas = {}
+        odds_evento = {}
 
         for casa in evento["bookmakers"]:
-            mercado = casa["markets"][0]
-            for i, outcome in enumerate(mercado["outcomes"]):
-                if i > 1:
-                    continue
-                nome = outcome["name"]
-                if nome not in odds_encontradas or outcome["price"] > odds_encontradas[nome]["odd"]:
-                    odds_encontradas[nome] = {"odd": outcome["price"], "casa": casa["title"]}
+            mercados = casa["markets"]
+            for mercado in mercados:
+                for outcome in mercado["outcomes"]:
+                    nome = outcome["name"]
+                    if nome not in odds_evento or outcome["price"] > odds_evento[nome]["odd"]:
+                        odds_evento[nome] = {
+                            "odd": outcome["price"],
+                            "casa": casa["title"]
+                        }
 
-        if len(odds_encontradas) == 2:
-            jogadores = list(odds_encontradas.keys())
-            odd1 = odds_encontradas[jogadores[0]]["odd"]
-            odd2 = odds_encontradas[jogadores[1]]["odd"]
+        nomes_necessarios = {evento["home_team"], evento["away_team"], "Draw"}
 
-            arbitragem, lucro = calcular_arbitragem(odd1, odd2)
+        if nomes_necessarios.issubset(set(odds_evento.keys())):
+            odd1 = odds_evento[evento["home_team"]]["odd"]
+            oddX = odds_evento["Draw"]["odd"]
+            odd2 = odds_evento[evento["away_team"]]["odd"]
+
+            arbitragem, lucro = calcular_arbitragem_3vias(odd1, oddX, odd2)
             if arbitragem:
                 encontrados += 1
-                aposta1, aposta2, retorno = calcular_apostas(odd1, odd2, investimento)
+                aposta1, apostaX, aposta2, retorno = calcular_apostas_3vias(odd1, oddX, odd2, investimento)
 
-                with st.expander(f"🎾 {evento['home_team']} vs {evento['away_team']}"):
+                with st.expander(f"⚽ {evento['home_team']} vs {evento['away_team']}"):
                     st.markdown(f"✅ **Arbitragem encontrada com lucro de `{lucro:.2f}%`**")
-                    st.markdown(f"- **{jogadores[0]}** @ {odd1} na `{odds_encontradas[jogadores[0]]['casa']}`")
-                    st.markdown(f"- **{jogadores[1]}** @ {odd2} na `{odds_encontradas[jogadores[1]]['casa']}`")
-                    st.markdown(f"**➡️ Aposte:** R$ `{aposta1}` em {jogadores[0]} | R$ `{aposta2}` em {jogadores[1]}")
+                    st.markdown(f"- **{evento['home_team']}** @ {odd1} na `{odds_evento[evento['home_team']]['casa']}`")
+                    st.markdown(f"- **Empate** @ {oddX} na `{odds_evento['Draw']['casa']}`")
+                    st.markdown(f"- **{evento['away_team']}** @ {odd2} na `{odds_evento[evento['away_team']]['casa']}`")
+                    st.markdown(f"**➡️ Aposte:** R$ `{aposta1}` no mandante | R$ `{apostaX}` no empate | R$ `{aposta2}` no visitante")
                     st.markdown(f"**🔁 Retorno garantido:** R$ `{retorno}`")
 
     if encontrados == 0:
